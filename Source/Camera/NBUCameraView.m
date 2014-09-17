@@ -129,15 +129,6 @@
     }
     
     
-    // Create the preview layer
-    if (!_previewLayer)
-    {
-        _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:_captureSession];
-        _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-        _previewLayer.frame = self.layer.bounds;
-        [self.layer insertSublayer:_previewLayer
-                           atIndex:0];
-    }
     
     // Configure output if needed
     if (!_captureImageOutput)
@@ -168,7 +159,30 @@
     // Start session if needed
     if (!_captureSession.running)
     {
-        [_captureSession startRunning];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            if (_captureSessionWillStartBlock) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    _captureSessionWillStartBlock();
+                });
+            }
+            [_captureSession startRunning];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (_captureSessionDidStartBlock) {
+                    _captureSessionDidStartBlock();
+                }
+                // Create the preview layer
+                _previewLayer.opacity = 1;
+                if (!_previewLayer)
+                {
+                    _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:_captureSession];
+                    _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+                    _previewLayer.frame = self.layer.bounds;
+                    [self.layer insertSublayer:_previewLayer
+                                       atIndex:0];
+                }
+            });
+        });
+        
         _shootButton.enabled = YES;
         NBULogVerbose(@"Capture session: {\n%@} started running", _captureSession);
     }
@@ -178,10 +192,16 @@
 {
     [super viewWillDisappear];
     
+    _previewLayer.opacity = 0;
+
     // Stop session if possible
     if (_captureSession.running && !_captureInProgress)
     {
-        [_captureSession stopRunning];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            _previewLayer.opacity = 0;
+            _shootButton.enabled = NO;
+            [_captureSession stopRunning];
+        });
         NBULogVerbose(@"Capture session: {\n%@} stopped running", _captureSession);
     }
 }
